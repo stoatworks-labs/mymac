@@ -2,12 +2,12 @@
 
 > **AI-assisted project.** This codebase was created with [Claude](https://claude.com/claude-code)
 > (Anthropic), directed and reviewed by a human author.
-> **Tested in a macOS 26.5 VM, not yet on a real show machine.** In the VM, a full apply and then
-> restore put back all 107 preference keys mymac can touch exactly, and the wallpaper store came
-> back byte-for-byte. Not confirmed yet: how trackpad changes feel live on real hardware (the VM
-> has no trackpad), and how Terminal.app's own permissions behave. Pointer size and the System
-> Events settings may ask, or be refused (see [Limits](#limits)). The site isn't deployed yet;
-> `mymac.stoatworks-labs.com` below is the intended address.
+> **Live at [mymac.stoatworks-labs.com](https://mymac.stoatworks-labs.com). Tested in a macOS 26.5
+> VM, not yet on a real show machine.** In the VM, a full apply and then restore put back all 107
+> preference keys mymac can touch exactly, and the wallpaper store came back byte-for-byte. Not
+> confirmed yet: how trackpad changes feel live on real hardware (the VM has no trackpad), and how
+> Terminal.app's own permissions behave. Pointer size and the System Events settings may ask, or
+> be refused (see [Limits](#limits)).
 
 Walk up to someone else's show Mac and it's set up wrong. The Dock is on the left and magnified,
 tap-to-click is off, scrolling runs backwards, Quick Note lives in the bottom-right hot corner,
@@ -24,6 +24,8 @@ bash ~/.mymac/restore.sh
 ```
 
 No install, no admin password, nothing stored anywhere. The profile lives entirely in the link.
+
+![The mymac builder with a show profile filled in](docs/screenshots/mymac.png)
 
 ## How to use it
 

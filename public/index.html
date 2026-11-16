@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mymac</title>
+  <meta name="description" content="Make a borrowed show Mac behave like yours with one Terminal line, and put every setting back before you leave.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="brand"><span class="mark" aria-hidden="true">⌘</span> mymac</p>
+      <h1>Make a borrowed Mac behave like yours, then put it back.</h1>
+      <p class="lede">Someone else's show machine with the Dock on the left, tap-to-click off and Quick Note in a hot corner? Pick your settings once, then run one line in its Terminal. mymac saves every value before it changes it, and one command puts the Mac back exactly as you found it. No install, no admin password.</p>
+      <ol class="steps">
+        <li>
+          <h2>1 · Read your own Mac</h2>
+          <p>Run this on <em>your</em> Mac. It only reads, and opens this page with your settings filled in.</p>
+          <div class="cmd"><code id="cmd-capture"></code><button type="button" class="copy" data-copy="cmd-capture">Copy</button></div>
+        </li>
+        <li>
+          <h2>2 · Tune it for the show</h2>
+          <p>Change anything below, and add the show-safety settings. The address bar always holds your profile, so bookmark it.</p>
+        </li>
+        <li>
+          <h2>3 · On the show Mac</h2>
+          <p>Paste your one-liner into Terminal. Before you leave, put everything back:</p>
+          <div class="cmd"><code id="cmd-restore">bash ~/.mymac/restore.sh</code><button type="button" class="copy" data-copy="cmd-restore">Copy</button></div>
+        </li>
+      </ol>
+    </div>
+  </header>
+
+  <main class="wrap layout">
+    <section id="settings" aria-label="Settings"></section>
+
+    <aside class="panel" aria-label="Your one-liner">
+      <div class="panel-inner">
+        <h2>Your one-liner</h2>
+        <p class="summary" id="summary">Nothing chosen yet.</p>
+        <div class="cmd big"><code id="cmd-apply"></code><button type="button" class="copy" data-copy="cmd-apply">Copy</button></div>
+        <details class="more">
+          <summary>Try it first, or another way to run it</summary>
+          <p>See what would change without changing anything:</p>
+          <div class="cmd"><code id="cmd-dry"></code><button type="button" class="copy" data-copy="cmd-dry">Copy</button></div>
+          <p>No network on the show Mac? Download the script, take it over on a stick, and run it with <code>bash mymac.sh</code>. Running it through <code>bash</code> means Gatekeeper never gets involved.</p>
+          <p class="row"><button type="button" id="download">Download mymac.sh</button> <button type="button" id="view">Show the script</button></p>
+        </details>
+        <label class="rest">
+          <input type="checkbox" id="rest">
+          <span><strong>Everything I left alone goes back to macOS defaults</strong><br>
+          For a Mac that's been set up strangely. Show-safety settings are never reset.</span>
+        </label>
+        <div class="row presets">
+          <button type="button" id="preset-show">Add show-safe pack</button>
+          <button type="button" id="preset-clear" class="quiet">Clear all</button>
+        </div>
+        <p class="code-line">Code: <code id="code"></code></p>
+        <p class="problems" id="problems" hidden></p>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="script-dialog">
+    <form method="dialog" class="dialog-head"><h2>mymac.sh</h2><button value="close">Close</button></form>
+    <pre id="script-text"></pre>
+  </dialog>
+
+  <footer class="wrap foot">
+    <p>Everything is bash and <code>defaults</code>, readable before you run it. Settings the script can't reach are listed at the end of each run, such as Do Not Disturb and display arrangement. For guards that last the whole show, see <a href="https://github.com/stoatworks-labs/showmode">Show Mode</a>.</p>
+    <p class="small">mymac stores nothing. Your profile lives in the link itself.</p>
+  </footer>
+</body>
+</html>

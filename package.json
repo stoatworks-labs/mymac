@@ -1,0 +1,16 @@
+{
+  "name": "mymac",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Make a borrowed show Mac behave like yours with one Terminal line, and put every setting back before you leave.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "node --test test/*.test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

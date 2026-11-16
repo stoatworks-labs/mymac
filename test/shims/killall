@@ -1,0 +1,2 @@
+#!/bin/bash
+echo "killall $*" >> "$MYMAC_SB/log"

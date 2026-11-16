@@ -1,0 +1,28 @@
+#!/bin/bash
+# Test double for osascript: just the calls mymac makes, with state under $MYMAC_SB/state.
+S="$MYMAC_SB/state"; mkdir -p "$S"
+echo "osascript $*" >> "$MYMAC_SB/log"
+store="$HOME/Library/Application Support/com.apple.wallpaper/Store/Index.plist"
+if [ "$1" = -l ]; then
+  cat >/dev/null # the JXA program
+  shift 3        # -l JavaScript -
+  case $# in
+    0) printf '0\t%s\n' "$(cat "$S/wallpaper")" ;;                      # screens_get
+    2) case "$1" in
+         *.png) cp "$1" "$S/wallpaper.png"; echo "$1" > "$S/wallpaper"
+                echo CHANGED-BY-MYMAC > "$store"; echo "1 of 1" ;;       # screens_fill
+         *) echo "$2" > "$S/wallpaper"; echo ok ;;                      # screen_set
+       esac ;;
+  esac
+  exit 0
+fi
+[ "$1" = -e ] || exit 1
+case "$2" in
+  'alert volume of (get volume settings)') cat "$S/alert" ;;
+  'set volume alert volume '*) echo "${2##* }" > "$S/alert" ;;
+  *'set dark mode to true') defaults write -g AppleInterfaceStyle -string Dark ;;
+  *'set dark mode to false') defaults delete -g AppleInterfaceStyle 2>/dev/null; true ;;
+  *'set autohide menu bar to true') defaults write -g _HIHideMenuBar -bool true ;;
+  *'set autohide menu bar to false') defaults write -g _HIHideMenuBar -bool false ;;
+  *) echo "unexpected osascript: $2" >&2; exit 1 ;;
+esac

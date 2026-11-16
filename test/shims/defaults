@@ -1,0 +1,10 @@
+#!/bin/bash
+# Test double for defaults(1): same verbs, against plist files under $MYMAC_SB/prefs.
+host=0
+[ "$1" = -currentHost ] && { host=1; shift; }
+verb=$1; dom=$2; shift 2
+case "$dom" in -g|-globalDomain|NSGlobalDomain) dom=NSGlobalDomain ;; esac
+dir="$MYMAC_SB/prefs"; [ $host = 1 ] && dir="$dir/ByHost"
+mkdir -p "$dir"
+echo "defaults $([ $host = 1 ] && printf '%s' '-currentHost ')$verb $dom $*" >> "$MYMAC_SB/log"
+exec /usr/bin/defaults "$verb" "$dir/$dom.plist" "$@"

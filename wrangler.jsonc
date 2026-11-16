@@ -1,0 +1,18 @@
+// mymac on Cloudflare: the builder page as static assets, plus a small Worker (src/worker.js)
+// that renders the bash scripts from the code in the URL. It stores nothing: no KV, no D1, no
+// logs of its own. There is no build step; wrangler bundles the Worker, and public/ is served
+// as it is.
+//
+//   npx wrangler dev       local, http://localhost:8787
+//   npx wrangler deploy    (only once the hostname below is decided)
+{
+  "name": "mymac",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": false }
+  // "routes": [{ "pattern": "mymac.stoatworks-labs.com", "custom_domain": true }]
+}

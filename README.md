@@ -188,6 +188,10 @@ stand-ins for `defaults`, `osascript`, `killall`, `activateSettings` and `caffei
 Mac's real domains, so the tests read your settings but never change them. They check that apply
 then restore gives back identical plists, and that capture reads back exactly what apply wrote.
 
+A push to `main` deploys the site through `.github/workflows/deploy.yml`. It runs the tests on a
+macOS runner (so the round trip runs for real), smoke-checks the page, deploys with wrangler, and
+then checks the live page and the scripts the Worker serves are this commit's.
+
 To try it on a real macOS without touching your own, use a throwaway
 [tart](https://tart.run) VM: `tart clone ghcr.io/cirruslabs/macos-tahoe-base:latest mymac-test`.
 `test/gen.mjs` writes the scripts and `test/gen-dumpkeys.mjs` writes a script that dumps every key

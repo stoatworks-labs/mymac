@@ -1,0 +1,138 @@
+# Test mymac and put it in front of visitors, on every push to main.
+#
+# mymac is a Cloudflare Worker (wrangler.jsonc): public/ is the builder page, served as static
+# assets, and src/worker.js turns the code in the address into the bash script curl gets. There
+# is no build step and no dependency to install, so there is no npm ci here and no lockfile to
+# cache from. The first deploy was by hand on 2026-11-16, the day the site went live; this
+# workflow took over the same day.
+#
+# The same shape as printbed-optimiser's and negative-space's deploy.yml, so the fleet reads
+# alike, with one difference: the tests run on a macOS runner first. The round trip in
+# test/roundtrip.test.mjs runs the generated scripts for real against /usr/bin/defaults and
+# plutil (on copies of the runner's preference files, never the runner's own), and it skips
+# itself anywhere but macOS. Run on Ubuntu it would pass by testing nothing.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # Prose changes nothing a visitor of this site sees. paths-ignore only skips a push when
+    # EVERY changed file matches, so a commit that touches code and a README still deploys.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+# Newest push wins. Cancelling an in-flight run is safe: wrangler uploads first and activates
+# the version as one step at the end, so a run killed part way through never goes live.
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Unit tests, then the sandboxed apply / apply again / restore round trip, capture
+      # against apply, and the dry run.
+      - run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Fail in a second rather than after the smoke check. A deploy that cannot
+      # authenticate is the whole point of this job failing to happen.
+      - name: Check the Cloudflare token is present
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set on this repository, so the"
+            echo "::error::site cannot be deployed. Create a Cloudflare API token with"
+            echo "::error::the 'Edit Cloudflare Workers' template scoped to this account,"
+            echo "::error::then:"
+            echo "::error::  gh secret set CLOUDFLARE_API_TOKEN --repo stoatworks-labs/mymac"
+            echo "::error::cf-run already uses such a token from the login keychain under"
+            echo "::error::the service name 'stoatworks-cloudflare'; the same one works here."
+            exit 1
+          fi
+          echo "token present - ok"
+
+      # Loads the builder in headless Chromium and fails on any runtime error or an empty
+      # <main>. The page renders every setting from public/lib/catalogue.js in the browser,
+      # so a module that throws leaves <main> empty.
+      - name: Smoke-check the page
+        uses: stoatworks-labs/smoke-check@v1
+        with:
+          dir: public
+
+      # wrangler is not a dependency of this project; locally it comes from npx through
+      # cf-run, which is why the version is pinned here rather than left to resolve to latest.
+      # Dependabot only bumps `uses:` refs, never a version inside a `run:`, so bump this
+      # deliberately and in step with the rest of the fleet.
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler's first-run metrics consent prompt would hang a non-interactive run.
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --yes wrangler@4.116.0 deploy
+
+      # Prove it landed, against the address a visitor uses, for both halves of the site.
+      #
+      #   * The page: hash the <head> of public/index.html against the live one. The whole
+      #     body cannot be compared, because Cloudflare injects a bot-management script with a
+      #     per-request nonce before </body>; the <head> is untouched.
+      #   * The Worker: the apply and capture scripts it serves must be byte-identical to the
+      #     ones this commit's modules generate for the same code and origin. That catches a
+      #     stale Worker even when the page did not change, which the <head> alone would miss.
+      #
+      # Both fail if the route or the proxied `mymac` AAAA 100:: record has gone, since then
+      # nothing at the address is this Worker.
+      - name: Check the live site is serving this commit
+        run: |
+          set -euo pipefail
+          origin=https://mymac.stoatworks-labs.com
+          code=rs1.tc1.ts150.dpl.dz56.cws.sw0.hc000e.ka1
+          want_head=$(sed -n '1,/<\/head>/p' public/index.html | shasum -a 256 | cut -d' ' -f1)
+          node test/gen.mjs "$RUNNER_TEMP/want" "$code" "$origin"
+          mkdir -p "$RUNNER_TEMP/got"
+          for attempt in 1 2 3 4 5; do
+            got_head=$(curl -sS --max-time 30 -A 'Mozilla/5.0' -H 'accept: text/html' "$origin/" \
+                       | sed -n '1,/<\/head>/p' | shasum -a 256 | cut -d' ' -f1 || true)
+            curl -sS --max-time 30 -o "$RUNNER_TEMP/got/apply.sh" "$origin/$code" || true
+            curl -sS --max-time 30 -o "$RUNNER_TEMP/got/capture.sh" "$origin/capture" || true
+            if [ "$got_head" = "$want_head" ] \
+               && cmp -s "$RUNNER_TEMP/want/apply.sh" "$RUNNER_TEMP/got/apply.sh" \
+               && cmp -s "$RUNNER_TEMP/want/capture.sh" "$RUNNER_TEMP/got/capture.sh"; then
+              echo "live page and scripts are this commit's (attempt $attempt)"
+              exit 0
+            fi
+            echo "not there yet (attempt $attempt): head $got_head, want $want_head; retrying in 10s"
+            sleep 10
+          done
+          diff "$RUNNER_TEMP/want/apply.sh" "$RUNNER_TEMP/got/apply.sh" | head -20 || true
+          echo "::error::Deployed, but $origin is not serving this commit. The upload succeeded,"
+          echo "::error::so this is the edge serving something else: check the Worker's route,"
+          echo "::error::and that the mymac AAAA 100:: record still exists and is proxied."
+          exit 1

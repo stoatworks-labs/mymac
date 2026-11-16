@@ -4,7 +4,12 @@
 // as it is.
 //
 //   npx wrangler dev                  local, http://localhost:8787
-//   cf-run npx wrangler deploy        by hand (the first deploy was by hand, 2026-11-16)
+//
+// Deployed by .github/workflows/deploy.yml on every push to main (the first deploy was by
+// hand, 2026-11-16). Manual fallback, from a checkout of main and only when that workflow is
+// broken:
+//
+//   cf-run npx --yes wrangler@4.116.0 deploy
 //
 // A ROUTE, not a custom domain. stoatworks-labs.com is at Cloudflare's limit of 100 Workers
 // custom domains per zone (error 100122), so `custom_domain: true` would upload a Worker that

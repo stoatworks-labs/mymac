@@ -3,8 +3,14 @@
 // logs of its own. There is no build step; wrangler bundles the Worker, and public/ is served
 // as it is.
 //
-//   npx wrangler dev       local, http://localhost:8787
-//   npx wrangler deploy    (only once the hostname below is decided)
+//   npx wrangler dev                  local, http://localhost:8787
+//   cf-run npx wrangler deploy        by hand (the first deploy was by hand, 2026-11-16)
+//
+// A ROUTE, not a custom domain. stoatworks-labs.com is at Cloudflare's limit of 100 Workers
+// custom domains per zone (error 100122), so `custom_domain: true` would upload a Worker that
+// nothing serves. A route has no such limit but needs a proxied DNS record to exist first,
+// which wrangler does not create: `mymac` is an AAAA 100:: record, proxied, made through the
+// API on 2026-11-16. Delete that record and the site goes dark while deploys still succeed.
 {
   "name": "mymac",
   "main": "src/worker.js",
@@ -13,6 +19,6 @@
     "directory": "./public",
     "binding": "ASSETS"
   },
-  "observability": { "enabled": false }
-  // "routes": [{ "pattern": "mymac.stoatworks-labs.com", "custom_domain": true }]
+  "observability": { "enabled": false },
+  "routes": [{ "pattern": "mymac.stoatworks-labs.com/*", "zone_name": "stoatworks-labs.com" }]
 }

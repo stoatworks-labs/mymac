@@ -8,11 +8,17 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/app.js"></script>
+  <!-- The About window. Vendored from stoatworks-backend/about by scripts/sync-about.py: never edit here. -->
+  <script src="/about-data.js" defer></script>
+  <script src="/about.js" defer></script>
 </head>
 <body>
   <header class="top">
     <div class="wrap">
-      <p class="brand"><span class="mark" aria-hidden="true">⌘</span> mymac</p>
+      <div class="brand-row">
+        <p class="brand"><span class="mark" aria-hidden="true">⌘</span> mymac</p>
+        <button type="button" class="about" data-stoatworks-about>About</button>
+      </div>
       <h1>Make a borrowed Mac behave like yours, then put it back.</h1>
       <p class="lede">Someone else's show machine with the Dock on the left, tap-to-click off and Quick Note in a hot corner? Pick your settings once, then run one line in its Terminal. mymac saves every value before it changes it, and one command puts the Mac back exactly as you found it. No install, no admin password.</p>
       <ol class="steps">
@@ -27,7 +33,7 @@
         </li>
         <li>
           <h2>3 · On the show Mac</h2>
-          <p>Paste your one-liner into Terminal. Before you leave, put everything back:</p>
+          <p>Paste your one-liner into Terminal, or run the script from a USB stick. Before you leave, put everything back:</p>
           <div class="cmd"><code id="cmd-restore">bash ~/.mymac/restore.sh</code><button type="button" class="copy" data-copy="cmd-restore">Copy</button></div>
         </li>
       </ol>
@@ -42,12 +48,17 @@
         <h2>Your one-liner</h2>
         <p class="summary" id="summary">Nothing chosen yet.</p>
         <div class="cmd big"><code id="cmd-apply"></code><button type="button" class="copy" data-copy="cmd-apply">Copy</button></div>
+        <div class="usb">
+          <p><strong>No network on the show Mac?</strong> Take the script over on a USB stick. In Terminal, type <code>bash</code> and a space, drag <code>mymac.sh</code> onto the window, then press Return.</p>
+          <p class="row"><button type="button" id="download" class="primary">Download mymac.sh</button></p>
+          <p id="sm-usb" hidden>To install Show Mode with no network as well, put its disk image on the stick beside mymac.sh: the <code>.dmg</code> from <a href="https://github.com/stoatworks-labs/showmode/releases/latest">Show Mode's latest release</a>.</p>
+        </div>
         <details class="more">
-          <summary>Try it first, or another way to run it</summary>
+          <summary>Try it first, or read the script</summary>
           <p>See what would change without changing anything:</p>
           <div class="cmd"><code id="cmd-dry"></code><button type="button" class="copy" data-copy="cmd-dry">Copy</button></div>
-          <p>No network on the show Mac? Download the script, take it over on a stick, and run it with <code>bash mymac.sh</code>. Running it through <code>bash</code> means Gatekeeper never gets involved.</p>
-          <p class="row"><button type="button" id="download">Download mymac.sh</button> <button type="button" id="view">Show the script</button></p>
+          <p>From a USB stick, add <code>--dry-run</code> after the file name.</p>
+          <p class="row"><button type="button" id="view">Show the script</button></p>
         </details>
         <label class="rest">
           <input type="checkbox" id="rest">
@@ -70,8 +81,21 @@
   </dialog>
 
   <footer class="wrap foot">
-    <p>Everything is bash and <code>defaults</code>, readable before you run it. Settings the script can't reach are listed at the end of each run, such as Do Not Disturb and display arrangement. For guards that last the whole show, see <a href="https://github.com/stoatworks-labs/showmode">Show Mode</a>.</p>
+    <p>Everything is bash and <code>defaults</code>, readable before you run it. Settings the script can't reach are listed at the end of each run, such as Do Not Disturb and display arrangement. For guards that last the whole show, mymac can install <a href="https://github.com/stoatworks-labs/showmode">Show Mode</a> as well: it's the last of the show-safety settings.</p>
     <p class="small">mymac stores nothing. Your profile lives in the link itself.</p>
   </footer>
+  <!--
+    Support footer. Vendored from stoatworks-backend/support-footer by
+    scripts/sync-support-footer.sh: edit it there and re-sync, never here.
+    Classic + defer on purpose: it reads its config off this tag, and
+    document.currentScript is null inside a module.
+  -->
+  <script
+    src="/support-footer.js"
+    defer
+    data-app="mymac"
+    data-repo="https://github.com/stoatworks-labs/mymac"
+    data-note="The site has no accounts and no database: your profile lives in the link."
+  ></script>
 </body>
 </html>

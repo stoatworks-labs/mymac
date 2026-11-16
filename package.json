@@ -1,6 +1,6 @@
 {
   "name": "mymac",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Make a borrowed show Mac behave like yours with one Terminal line, and put every setting back before you leave.",

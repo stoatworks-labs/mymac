@@ -11,7 +11,7 @@ import { solidPng, solidPngBase64 } from '../public/lib/png.js';
 import { applyScript, captureScript, restoreRunner } from '../public/lib/script.js';
 import worker, { wantsScript } from '../src/worker.js';
 
-const OPS = new Set(['w', 'd', 'wif', 'wall', 'dark', 'menubar', 'alert', 'awake']);
+const OPS = new Set(['w', 'd', 'wif', 'wall', 'dark', 'menubar', 'alert', 'awake', 'showmode']);
 
 function valuesOf(s) {
   switch (s.kind) {

@@ -13,6 +13,7 @@
   --code-bg: #0e2942;
   --code-ink: #eaf2fa;
   --radius: 10px;
+  --sw-support-accent: var(--accent);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
@@ -81,7 +82,13 @@ button.quiet { background: transparent; }
   color: #eaf2fa;
   padding: 28px 0 32px;
 }
+.brand-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { margin: 0; font-weight: 700; letter-spacing: 0.02em; font-size: 1.05rem; }
+.top .about {
+  background: transparent; color: #eaf2fa;
+  border-color: rgba(255, 255, 255, 0.28); padding: 4px 12px;
+}
+.top .about:hover { border-color: var(--accent-soft); }
 .mark {
   display: inline-grid; place-items: center;
   width: 1.6em; height: 1.6em; margin-right: 0.3em;
@@ -137,6 +144,16 @@ h1 { font-size: clamp(1.6rem, 3.6vw, 2.4rem); line-height: 1.15; margin: 14px 0 
 }
 .panel h2 { margin: 0; font-size: 1.15rem; }
 .summary { margin: 0; color: var(--muted); font-size: 0.93rem; }
+.usb {
+  display: grid; gap: 8px;
+  background: var(--chip); border-radius: 8px; padding: 12px;
+  font-size: 0.9rem; color: var(--muted);
+}
+.usb p { margin: 0; }
+.usb strong { color: var(--ink); font-weight: 600; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--paper); font-weight: 600; }
+button.primary:hover { filter: brightness(1.08); }
+button.primary:disabled { opacity: 0.5; cursor: default; filter: none; }
 .more summary { cursor: pointer; color: var(--accent); font-size: 0.92rem; }
 .more p { font-size: 0.9rem; color: var(--muted); margin: 10px 0 6px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }

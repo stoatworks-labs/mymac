@@ -16,6 +16,8 @@
 //   ['menubar', 0|1]                               menu bar auto-hide, through System Events
 //   ['alert', n]                                   alert volume 0-100 (AppleScript, live)
 //   ['awake']                                      caffeinate until restore runs
+//   ['showmode']                                   install (if needed) and open Show Mode; restore
+//                                                  quits it and removes what mymac installed
 //
 // `refresh` names what has to restart or reread for the change to show:
 //   hid      activateSettings -u (trackpad, mouse, keyboard driver preferences)
@@ -573,6 +575,13 @@ export const SETTINGS = [
     help: 'On, an app crash posts a notification instead of a window over the show.',
     kind: 'flag', def: null, reset: false,
     apply: (v) => (on(v) ? [['w', 0, 'com.apple.CrashReporter', 'UseUNC', 'bool', true]] : []),
+    refresh: [],
+  },
+  {
+    code: 'sh', group: 'show', label: 'Install and open Show Mode',
+    help: "Show Mode is a menu-bar app that holds a show Mac still until you end the show: it keeps it awake, stops hot corners and Mission Control, and fences the pointer off the audience's screen. mymac installs it if it isn't there, from a disk image beside mymac.sh or else the latest from GitHub, and checks it's signed by Stoatworks first. Restore quits it, so it puts back what it changed, then removes what mymac installed.",
+    kind: 'flag', def: null, reset: false,
+    apply: (v) => (on(v) ? [['showmode']] : []),
     refresh: [],
   },
 ];

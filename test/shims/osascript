@@ -4,6 +4,8 @@ S="$MYMAC_SB/state"; mkdir -p "$S"
 echo "osascript $*" >> "$MYMAC_SB/log"
 store="$HOME/Library/Application Support/com.apple.wallpaper/Store/Index.plist"
 if [ "$1" = -l ]; then
+  # sm_asset only parses a release's JSON, so the real osascript runs it.
+  case "$4" in *.json) exec /usr/bin/osascript "$@" ;; esac
   cat >/dev/null # the JXA program
   shift 3        # -l JavaScript -
   case $# in

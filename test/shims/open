@@ -1,0 +1,8 @@
+#!/bin/bash
+# Test double for open(1): "launches" an app by running its executable in the background, and
+# records the process so the pgrep double can see it. Anything else (a URL) is just logged.
+echo "open $*" >> "$MYMAC_SB/log"
+exe="$1/Contents/MacOS/ShowMode"
+[ -x "$exe" ] || exit 0
+nohup "$exe" </dev/null >/dev/null 2>&1 &
+printf '%s\t%s\n' "$!" "$exe" >> "$MYMAC_SB/state/procs"

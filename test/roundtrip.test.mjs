@@ -2,12 +2,18 @@
 // killall, activateSettings and caffeinate (test/shims) that act on copies of the preference
 // files. Nothing on the Mac running the tests is written; seeding only exports (reads) domains.
 //
+// Show Mode is a stand-in app in the sandbox (a bash loop with a fake signature), "downloaded"
+// by a curl double from a fake GitHub release and "mounted" by an hdiutil double; open and pgrep
+// doubles start and see only that stand-in, so a real Show Mode on this Mac is never touched.
+// The script's one system path, SM_SYS=/Applications, is pointed into the sandbox.
+//
 // macOS only (it needs /usr/bin/defaults and plutil).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, chmodSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,11 +52,53 @@ function domains() {
 
 const prefFile = (sb, { host, domain }) => join(sb, 'prefs', ...(host ? ['ByHost'] : []), `${domain}.plist`);
 
+const SM_DMG = 'showmode-0.6.0-macos-universal.dmg';
+const SM_SIGNED = 'Identifier=com.stoatworks.showmode\nTeamIdentifier=3G7USP8N73\n';
+
+// The stand-in Show Mode: makes the files the real one makes, and on SIGTERM "restores" (or,
+// with state/showmode-stuck, leaves its journal behind as a restore that could not finish does).
+const FAKE_SHOWMODE = `#!/bin/bash
+trap 'echo "ShowMode TERM" >> "$MYMAC_SB/log"
+  [ -f "$MYMAC_SB/state/showmode-stuck" ] && echo stuck > "$HOME/Library/Application Support/ShowMode/journal.plist"
+  exit 0' TERM
+mkdir -p "$HOME/Library/Application Support/ShowMode" "$HOME/Library/Logs"
+echo launched >> "$HOME/Library/Logs/ShowMode.log"
+defaults write com.stoatworks.showmode launched -bool true
+while :; do sleep 0.1; done
+`;
+
+// A Show Mode app in <dir>, signed (in the doubles' terms) by `signature`.
+function makeShowMode(dir, signature = SM_SIGNED) {
+  const app = join(dir, 'Show Mode.app');
+  mkdirSync(join(app, 'Contents/MacOS'), { recursive: true });
+  writeFileSync(join(app, 'Contents/MacOS/ShowMode'), FAKE_SHOWMODE);
+  chmodSync(join(app, 'Contents/MacOS/ShowMode'), 0o755);
+  writeFileSync(join(app, 'Contents/_FakeSignature'), signature);
+  return app;
+}
+
+// The fake GitHub release: its API answer and the "disk image" (a file naming the folder that
+// hdiutil's double mounts).
+function makeRelease(sb, { digest } = {}) {
+  makeShowMode(join(sb, 'image'));
+  const dmg = `${join(sb, 'image')}\n`;
+  writeFileSync(join(sb, 'gh', SM_DMG), dmg);
+  const sum = digest ?? createHash('sha256').update(dmg).digest('hex');
+  writeFileSync(join(sb, 'gh/release.json'), JSON.stringify({
+    tag_name: 'v0.6.0', body: null,
+    assets: [
+      { name: 'notes.txt', browser_download_url: 'https://github.com/stoatworks-labs/showmode/releases/download/v0.6.0/notes.txt', digest: null },
+      { name: SM_DMG, label: null, digest: `sha256:${sum}`, browser_download_url: `https://github.com/stoatworks-labs/showmode/releases/download/v0.6.0/${SM_DMG}` },
+    ],
+  }));
+}
+
 function makeSandbox(seed) {
   const sb = mkdtempSync(join(tmpdir(), 'mymac-test-'));
-  for (const p of ['prefs/ByHost', 'state', 'home/Library/Application Support/com.apple.wallpaper/Store']) {
+  for (const p of ['prefs/ByHost', 'state', 'gh', 'Applications', 'home/Library/Application Support/com.apple.wallpaper/Store']) {
     mkdirSync(join(sb, p), { recursive: true });
   }
+  makeRelease(sb);
   writeFileSync(join(sb, 'log'), '');
   writeFileSync(join(sb, 'state', 'alert'), '75\n');
   writeFileSync(join(sb, 'state', 'wallpaper'), '/System/Library/Desktop Pictures/Original.heic\n');
@@ -66,15 +114,25 @@ function makeSandbox(seed) {
   return sb;
 }
 
-function sh(sb, script, args = []) {
-  const file = join(sb, `run-${Math.random().toString(36).slice(2)}.sh`);
-  writeFileSync(file, script);
+function sh(sb, script, args = [], file = join(sb, `run-${Math.random().toString(36).slice(2)}.sh`), timeout = 240_000) {
+  writeFileSync(file, script.replace(/^SM_SYS=\/Applications$/m, `SM_SYS='${sb}/Applications'`));
   const r = spawnSync('/bin/bash', [file, ...args], {
     env: { PATH: `${shims}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: join(sb, 'home'), MYMAC_SB: sb, LANG: 'en_GB.UTF-8' },
     encoding: 'utf8',
-    timeout: 240_000,
+    timeout,
   });
   return r;
+}
+
+// Stops any stand-in Show Mode still running, then removes the sandbox.
+function cleanup(sb) {
+  const procs = join(sb, 'state/procs');
+  if (existsSync(procs)) {
+    for (const line of readFileSync(procs, 'utf8').split('\n').filter(Boolean)) {
+      try { process.kill(Number(line.split('\t')[0]), 'SIGKILL'); } catch { /* gone */ }
+    }
+  }
+  rmSync(sb, { recursive: true, force: true });
 }
 
 function canon(file) {
@@ -102,7 +160,7 @@ const FULL = [
   'dpl', 'da1', 'di1', 'dz40', 'dm1', 'dl96', 'dr0', 'des', 'dw1', 'dx1', 'db0', 'dn0',
   'mh1', 'ck1', 'hr1', 'wp112233', 'apd', 'sbl', 'kr2', 'kd15', 'ph0', 'fn1', 'ac0', 'ak0',
   'sq0', 'pd0', 'dk0', 'ex1', 'hf1', 'pb1', 'su1', 'fvn', 'cws', 'sm1', 'tg0', 'mr0', 'sp0',
-  'sw0', 'mc0', 'nc0', 'lp0', 'bk0', 'hc2a4e', 'ss0', 'ka1', 'as1', 'ar0', 'cn1',
+  'sw0', 'mc0', 'nc0', 'lp0', 'bk0', 'hc2a4e', 'ss0', 'ka1', 'as1', 'ar0', 'cn1', 'sh1',
 ].join('.');
 
 test('the FULL profile names every setting', () => {
@@ -168,7 +226,7 @@ test('apply, apply again, restore: every preference comes back exactly', { skip,
     for (let i = 0; i < 20 && pidAlive(pid); i++) spawnSync('sleep', ['0.1']);
     assert.equal(pidAlive(pid), false, 'restore stops caffeinate');
   } finally {
-    rmSync(sb, { recursive: true, force: true });
+    cleanup(sb);
   }
 });
 
@@ -213,7 +271,7 @@ test('capture reads back exactly what apply wrote', { skip, timeout: 600_000 }, 
       for (const s of SETTINGS) if (expected[s.code] === s.def) delete expected[s.code];
       assert.equal(encode(got.profile), encode(expected), `capture after applying ${code}`);
     } finally {
-      rmSync(sb, { recursive: true, force: true });
+      cleanup(sb);
     }
   }
 });
@@ -229,7 +287,7 @@ test('restore puts back a strangely configured Mac, odd strings included', { ski
     const after = prefsState(sb);
     for (const k of Object.keys(before)) assert.equal(after[k], before[k], `${k} did not come back`);
   } finally {
-    rmSync(sb, { recursive: true, force: true });
+    cleanup(sb);
   }
 });
 
@@ -245,7 +303,205 @@ test('dry run changes nothing', { skip, timeout: 300_000 }, () => {
     const writes = readFileSync(join(sb, 'log'), 'utf8').split('\n').filter((l) => / (write|delete) /.test(l));
     assert.deepEqual(writes, []);
   } finally {
-    rmSync(sb, { recursive: true, force: true });
+    cleanup(sb);
   }
 });
 
+
+// ── Show Mode ───────────────────────────────────────────────────────────────────────────────
+
+const smApp = (sb, where) => join(sb, where, 'Show Mode.app');
+const smRunning = (sb) => (existsSync(join(sb, 'state/procs'))
+  ? readFileSync(join(sb, 'state/procs'), 'utf8').split('\n').filter(Boolean)
+    .map((l) => Number(l.split('\t')[0])).filter(pidAlive)
+  : []);
+const logOf = (sb) => readFileSync(join(sb, 'log'), 'utf8');
+const restore = (sb) => sh(sb, readFileSync(join(sb, 'home/.mymac/restore.sh'), 'utf8'));
+// The stand-in has started (as a real Show Mode has, long before anyone runs restore).
+const waitUp = (sb) => { for (let i = 0; i < 50 && !smFiles(sb).prefs; i++) spawnSync('sleep', ['0.1']); };
+const smFiles = (sb) => ({
+  log: existsSync(join(sb, 'home/Library/Logs/ShowMode.log')),
+  support: existsSync(join(sb, 'home/Library/Application Support/ShowMode')),
+  prefs: read(sb, false, 'com.stoatworks.showmode', 'launched') != null,
+});
+
+test('Show Mode: downloaded, checked, installed and opened; restore quits it, then removes it', { skip, timeout: 120_000 }, () => {
+  const sb = makeSandbox();
+  try {
+    const r = sh(sb, applyScript(decode('tc1.sh1').profile));
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /✓ Install and open Show Mode \(in .*\/Applications\)/);
+    assert.ok(existsSync(smApp(sb, 'Applications')), 'installed into Applications');
+    const log = logOf(sb);
+    for (const k of ['curl -fsSL --max-time 20 -H Accept: application/vnd.github+json', `releases/download/v0.6.0/${SM_DMG}`,
+      'hdiutil attach', 'codesign --verify --deep --strict', 'spctl --assess --type execute', 'hdiutil detach', 'open ']) {
+      assert.ok(log.includes(k), `apply should run ${k}`);
+    }
+    assert.equal(smRunning(sb).length, 1, 'Show Mode is open');
+    waitUp(sb);
+    assert.deepEqual(smFiles(sb), { log: true, support: true, prefs: true });
+
+    // Restore quits it before anything else, then removes it and only what it brought.
+    const head = readFileSync(join(sb, 'home/.mymac/head.sh'), 'utf8');
+    assert.match(head, /^showmode_back .*Show\\ Mode\.app 1 \|\| exit 1$/m);
+    assert.match(head, /^defaults delete com\.stoatworks\.showmode 2>\/dev\/null$/m);
+    assert.match(head, /^sm_shortcuts_note$/m);
+    const restoreSh = readFileSync(join(sb, 'home/.mymac/restore.sh'), 'utf8');
+    const quits = restoreSh.search(/^showmode_back \S.* 1 \|\| exit 1$/m);
+    const putsBack = restoreSh.search(/^defaults \S+ com\.apple\.AppleMultitouchTrackpad Clicking/m);
+    assert.ok(quits > 0 && putsBack > 0 && quits < putsBack, 'Show Mode quits before mymac puts its own keys back');
+
+    writeFileSync(join(sb, 'state/shortcuts'), 'Show Mode Focus On\nShow Mode Focus Off\n'); // added during the show
+    const rr = restore(sb);
+    assert.equal(rr.status, 0, rr.stderr + rr.stdout);
+    assert.match(rr.stdout, /✓ Show Mode quit and removed/);
+    assert.match(rr.stdout, /Delete Show Mode Focus On and Show Mode Focus Off/);
+    assert.ok(logOf(sb).includes('ShowMode TERM'), 'Show Mode got SIGTERM, which makes it restore');
+    assert.equal(smRunning(sb).length, 0);
+    assert.equal(existsSync(smApp(sb, 'Applications')), false);
+    assert.deepEqual(smFiles(sb), { log: false, support: false, prefs: false });
+    assert.equal(existsSync(join(sb, 'home/.mymac')), false);
+  } finally {
+    cleanup(sb);
+  }
+});
+
+test('Show Mode from a USB stick: the disk image beside mymac.sh, no network, no admin', { skip, timeout: 120_000 }, () => {
+  const sb = makeSandbox();
+  try {
+    writeFileSync(join(sb, 'state/offline'), '');
+    rmSync(join(sb, 'Applications'), { recursive: true }); // not writable here, so ~/Applications
+    const stick = join(sb, 'USB STICK');
+    mkdirSync(stick);
+    cpSync(join(sb, 'gh', SM_DMG), join(stick, SM_DMG));
+    // A browser marks a saved disk image, and everything in it, as downloaded.
+    spawnSync('/usr/bin/xattr', ['-w', 'com.apple.quarantine', '0083;6afacb54;Safari;', join(sb, 'image/Show Mode.app')]);
+    const r = sh(sb, applyScript(decode('sh1').profile), [], join(stick, 'mymac.sh'));
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /✓ Install and open Show Mode \(in .*\/home\/Applications\)/);
+    assert.ok(!logOf(sb).includes('curl '), 'no network needed');
+    assert.ok(logOf(sb).includes(`hdiutil attach -quiet -nobrowse -readonly -noautoopen -mountpoint`));
+    assert.ok(existsSync(smApp(sb, 'home/Applications')));
+    const q = spawnSync('/usr/bin/xattr', ['-p', 'com.apple.quarantine', smApp(sb, 'home/Applications')]);
+    assert.notEqual(q.status, 0, 'the checked copy loses the quarantine mark (no second prompt, no translocation)');
+
+    const rr = restore(sb);
+    assert.equal(rr.status, 0, rr.stderr + rr.stdout);
+    assert.equal(existsSync(join(sb, 'home/Applications')), false, 'restore removes the ~/Applications it made');
+  } finally {
+    cleanup(sb);
+  }
+});
+
+test('Show Mode: no network and no disk image is a ✗ with the reason, and the rest still applies', { skip, timeout: 120_000 }, () => {
+  const sb = makeSandbox();
+  try {
+    writeFileSync(join(sb, 'state/offline'), '');
+    const r = sh(sb, applyScript(decode('tc1.sh1').profile));
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /✗ Install and open Show Mode — GitHub couldn't be reached and there's no showmode-\*-macos-universal\.dmg beside mymac\.sh/);
+    assert.match(r.stdout, /✓ Tap to click/);
+    assert.equal(readFileSync(join(sb, 'home/.mymac/head.sh'), 'utf8'), '', 'nothing recorded for restore');
+    const rr = restore(sb);
+    assert.equal(rr.status, 0, rr.stderr + rr.stdout);
+  } finally {
+    cleanup(sb);
+  }
+});
+
+test('Show Mode: a copy not signed by Stoatworks, or a download with the wrong checksum, is never installed', { skip, timeout: 120_000 }, () => {
+  for (const [why, setup, expect] of [
+    ['another signer', (sb) => makeShowMode(join(sb, 'image'), 'Identifier=com.stoatworks.showmode\nTeamIdentifier=ABCDE12345\n'),
+      /isn't Show Mode signed by Stoatworks, so it wasn't installed/],
+    ['unsigned', (sb) => rmSync(join(sb, 'image/Show Mode.app/Contents/_FakeSignature')),
+      /isn't Show Mode signed by Stoatworks/],
+    ['wrong checksum', (sb) => makeRelease(sb, { digest: '0'.repeat(64) }), /didn't match GitHub's checksum/],
+  ]) {
+    const sb = makeSandbox();
+    try {
+      setup(sb);
+      const r = sh(sb, applyScript(decode('sh1').profile));
+      assert.equal(r.status, 0, r.stderr + r.stdout);
+      assert.match(r.stdout, expect, why);
+      assert.equal(existsSync(smApp(sb, 'Applications')), false, `${why}: not installed`);
+      assert.equal(smRunning(sb).length, 0, `${why}: not opened`);
+      if (why !== 'wrong checksum') assert.ok(logOf(sb).includes('hdiutil detach'), `${why}: image detached`);
+      else assert.ok(!logOf(sb).includes('hdiutil attach'), 'a bad download is never mounted');
+    } finally {
+      cleanup(sb);
+    }
+  }
+});
+
+test('Show Mode already installed: opened if it is closed, left alone if it is open, never removed', { skip, timeout: 120_000 }, () => {
+  const sb = makeSandbox();
+  try {
+    makeShowMode(join(sb, 'Applications'));
+    const r = sh(sb, applyScript(decode('sh1').profile));
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, /✓ Open Show Mode \(already in .*\/Applications\)/);
+    assert.ok(!logOf(sb).includes('curl '), 'nothing downloaded');
+    assert.equal(smRunning(sb).length, 1);
+    waitUp(sb);
+    const rr = restore(sb);
+    assert.equal(rr.status, 0, rr.stderr + rr.stdout);
+    assert.match(rr.stdout, /✓ Show Mode quit\n/);
+    assert.ok(existsSync(smApp(sb, 'Applications')), 'the owner\'s copy stays');
+
+    // Open before mymac runs: nothing to do, and restore doesn't quit it.
+    spawnSync(join(shims, 'open'), [smApp(sb, 'Applications')], { env: { ...process.env, MYMAC_SB: sb, HOME: join(sb, 'home') } });
+    const r2 = sh(sb, applyScript(decode('sh1').profile));
+    assert.equal(r2.status, 0, r2.stderr + r2.stdout);
+    assert.match(r2.stdout, /already right 1/);
+    assert.equal(readFileSync(join(sb, 'home/.mymac/head.sh'), 'utf8'), '');
+    const rr2 = restore(sb);
+    assert.equal(rr2.status, 0, rr2.stderr + rr2.stdout);
+    assert.equal(smRunning(sb).length, 1, 'still running');
+  } finally {
+    cleanup(sb);
+  }
+});
+
+test('restore stops, changing nothing, while Show Mode cannot finish putting things back', { skip, timeout: 120_000 }, () => {
+  const sb = makeSandbox();
+  try {
+    const was = read(sb, false, 'com.apple.AppleMultitouchTrackpad', 'Clicking');
+    const r = sh(sb, applyScript(decode('tc1.sh1').profile));
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    waitUp(sb);
+    writeFileSync(join(sb, 'state/showmode-stuck'), '');
+
+    const rr = restore(sb);
+    assert.equal(rr.status, 1, rr.stdout);
+    assert.match(rr.stderr, /choose Finish Restoring and quit it, then run bash ~\/\.mymac\/restore\.sh again/);
+    assert.equal(read(sb, false, 'com.apple.AppleMultitouchTrackpad', 'Clicking'), '1', 'mymac put nothing back yet');
+    assert.ok(existsSync(smApp(sb, 'Applications')), 'Show Mode kept, to finish restoring');
+    assert.ok(existsSync(join(sb, 'home/.mymac/restore.sh')), 'restore can run again');
+
+    // Finish Restoring clears the journal; the second restore completes.
+    rmSync(join(sb, 'home/Library/Application Support/ShowMode/journal.plist'));
+    const rr2 = restore(sb);
+    assert.equal(rr2.status, 0, rr2.stderr + rr2.stdout);
+    assert.equal(read(sb, false, 'com.apple.AppleMultitouchTrackpad', 'Clicking'), was);
+    assert.equal(existsSync(smApp(sb, 'Applications')), false);
+  } finally {
+    cleanup(sb);
+  }
+});
+
+test('a run that stops part way still leaves a restore.sh for what it changed', { skip, timeout: 120_000 }, () => {
+  const sb = makeSandbox();
+  try {
+    const was = read(sb, false, 'com.apple.AppleMultitouchTrackpad', 'Clicking');
+    writeFileSync(join(sb, 'state/hdiutil-hang'), '');
+    const r = sh(sb, applyScript(decode('tc1.sh1').profile), [], undefined, 3000);
+    assert.ok(r.error || r.signal, 'the run was stopped');
+    assert.equal(read(sb, false, 'com.apple.AppleMultitouchTrackpad', 'Clicking'), '1');
+    assert.ok(existsSync(join(sb, 'home/.mymac/restore.sh')), 'restore.sh written as it went');
+    const rr = restore(sb);
+    assert.equal(rr.status, 0, rr.stderr + rr.stdout);
+    assert.equal(read(sb, false, 'com.apple.AppleMultitouchTrackpad', 'Clicking'), was);
+  } finally {
+    cleanup(sb);
+  }
+});

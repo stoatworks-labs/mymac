@@ -1,0 +1,5 @@
+#!/bin/bash
+# Test double for shortcuts(1): `list` prints $MYMAC_SB/state/shortcuts.
+echo "shortcuts $*" >> "$MYMAC_SB/log"
+[ "$1" = list ] && cat "$MYMAC_SB/state/shortcuts" 2>/dev/null
+exit 0

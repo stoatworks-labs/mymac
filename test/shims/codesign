@@ -1,0 +1,12 @@
+#!/bin/bash
+# Test double for codesign: an app's "signature" is the file Contents/_FakeSignature, holding
+# the Identifier= and TeamIdentifier= lines codesign -dv prints.
+echo "codesign $*" >> "$MYMAC_SB/log"
+for app; do :; done
+sig="$app/Contents/_FakeSignature"
+[ -f "$sig" ] || { echo "$app: code object is not signed at all" >&2; exit 1; }
+case "$1" in
+  --verify) exit 0 ;;
+  -dv) echo "Executable=$app/Contents/MacOS/ShowMode" >&2; cat "$sig" >&2 ;;
+  *) exit 1 ;;
+esac

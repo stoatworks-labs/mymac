@@ -1,0 +1,17 @@
+#!/bin/bash
+# Test double for curl: GitHub's latest-release API and its download URLs, served from
+# $MYMAC_SB/gh. With $MYMAC_SB/state/offline present it fails the way curl does offline.
+echo "curl $*" >> "$MYMAC_SB/log"
+out="" url=""
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out=$2; shift ;; -H|--max-time) shift ;; -*) ;; *) url=$1 ;; esac
+  shift
+done
+[ -f "$MYMAC_SB/state/offline" ] && exit 6
+case "$url" in
+  https://api.github.com/repos/stoatworks-labs/showmode/releases/latest) src="$MYMAC_SB/gh/release.json" ;;
+  https://github.com/stoatworks-labs/showmode/releases/download/*) src="$MYMAC_SB/gh/$(basename "$url")" ;;
+  *) exit 22 ;;
+esac
+[ -f "$src" ] || exit 22
+if [ -n "$out" ]; then cp "$src" "$out"; else cat "$src"; fi

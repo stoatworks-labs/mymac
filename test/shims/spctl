@@ -1,0 +1,5 @@
+#!/bin/bash
+# Test double for spctl: accepts everything codesign's double does.
+echo "spctl $*" >> "$MYMAC_SB/log"
+for app; do :; done
+[ -f "$app/Contents/_FakeSignature" ]

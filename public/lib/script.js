@@ -11,7 +11,7 @@ import { SETTINGS, MANUAL_CHECKS, isResettable } from './catalogue.js';
 import { encode } from './code.js';
 import { solidPngBase64 } from './png.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
@@ -45,6 +45,8 @@ function opLine(op) {
       return `alertvol ${a[0]}`;
     case 'awake':
       return 'awake';
+    case 'showmode':
+      return 'showmode';
     default:
       throw new Error(`unknown op ${kind}`);
   }
@@ -145,11 +147,15 @@ end() {
     NFAIL=$((NFAIL + 1))
   elif [ "$SC" -gt 0 ]; then
     say "  ✓ $S"; NSET=$((NSET + 1)); addkinds "$K"
+    for k in $K; do grep -qxF "$k" "$D/kinds" || printf '%s\n' "$k" >> "$D/kinds"; done
     case " $K " in *" logout "*) LOGOUT="$LOGOUT, $S" ;; esac
     case " $K " in *" relaunch "*) RELAUNCH="$RELAUNCH, $S" ;; esac
   else
     NSAME=$((NSAME + 1))
   fi
+  # Rebuilt after every setting, so a run that stops part way (a prompt, Ctrl-C, a lost
+  # connection) still leaves a restore.sh for what it did change.
+  assemble
 }
 dry() { SD="$SD    $1
 "; }
@@ -253,6 +259,147 @@ awake() {
   changed
 }
 
+# ── Show Mode ───────────────────────────────────────────────────────────────────────────
+# Installed only where it isn't already, and only once its signature checks out. Restore quits
+# it first, so it puts back what it changed before mymac puts back what mymac changed.
+SM_ID=com.stoatworks.showmode
+SM_TEAM=3G7USP8N73
+SM_SYS=/Applications
+SM_API=https://api.github.com/repos/stoatworks-labs/showmode/releases/latest
+
+sm_find() { # prints where Show Mode is installed, if it is
+  local p
+  for p in "$SM_SYS/Show Mode.app" "$HOME/Applications/Show Mode.app"; do
+    if [ -d "$p" ]; then printf '%s\n' "$p"; return 0; fi
+  done
+  return 1
+}
+
+sm_trusted() { # sm_trusted <app>: Show Mode, intact, signed by Stoatworks and accepted by Gatekeeper
+  local info
+  [ -d "$1" ] || return 1
+  codesign --verify --deep --strict "$1" >/dev/null 2>&1 || return 1
+  info=$(codesign -dv "$1" 2>&1)
+  printf '%s\n' "$info" | grep -qx "Identifier=$SM_ID" || return 1
+  printf '%s\n' "$info" | grep -qx "TeamIdentifier=$SM_TEAM" || return 1
+  spctl --assess --type execute "$1" >/dev/null 2>&1
+}
+
+sm_asset() { # sm_asset <release.json>: the universal disk image's URL, then its sha256
+  osascript -l JavaScript - "$1" <<'JS'
+function run(argv) {
+  ObjC.import('Foundation');
+  var text = $.NSString.stringWithContentsOfFileEncodingError(argv[0], $.NSUTF8StringEncoding, null);
+  var a = (JSON.parse(text.js).assets || []).filter(function (x) { return /-macos-universal\.dmg$/.test(x.name); })[0];
+  if (!a) throw new Error('no disk image in the latest release');
+  return a.browser_download_url + '\n' + String(a.digest || '').replace(/^sha256:/, '');
+}
+JS
+}
+
+sm_download() { # sm_download <dir>: the latest disk image to <dir>/showmode.dmg; 2 = wrong checksum
+  local info url sum
+  curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' -o "$1/release.json" "$SM_API" 2>/dev/null || return 1
+  info=$(sm_asset "$1/release.json" 2>/dev/null) || return 1
+  url=$(printf '%s\n' "$info" | sed -n 1p)
+  sum=$(printf '%s\n' "$info" | sed -n 2p)
+  case "$url" in https://github.com/stoatworks-labs/showmode/releases/download/*) ;; *) return 1 ;; esac
+  curl -fsSL --max-time 600 -o "$1/showmode.dmg" "$url" 2>/dev/null || return 1
+  if [ -n "$sum" ] && [ "$(shasum -a 256 "$1/showmode.dmg" | cut -d ' ' -f 1)" != "$sum" ]; then return 2; fi
+}
+
+sm_open() { # sm_open <app>: opens it without waiting on any prompt, then waits up to 10 s for it to run
+  local n=0
+  open "$1" </dev/null >/dev/null 2>&1 &
+  while [ "$n" -lt 20 ]; do
+    pgrep -x ShowMode >/dev/null 2>&1 && return 0
+    sleep 0.5; n=$((n + 1))
+  done
+  return 1
+}
+
+sm_unmount() { # sm_unmount <dir>: detaches <dir>/mnt, then removes only what mymac put in <dir>
+  hdiutil detach -quiet "$1/mnt" >/dev/null 2>&1 || hdiutil detach -quiet -force "$1/mnt" >/dev/null 2>&1
+  rmdir "$1/mnt" 2>/dev/null
+  rm -f "$1/showmode.dmg" "$1/release.json"
+  rmdir "$1" 2>/dev/null
+}
+
+showmode() {
+  local have dest dmg f t
+  pgrep -x ShowMode >/dev/null 2>&1 && return 0
+  if have=$(sm_find); then
+    S="Open Show Mode (already in $(dirname "$have"))"
+    if [ "$DRY" = 1 ]; then dry "open $have"; return 0; fi
+    if ! seen showmode; then
+      printf 'showmode_back %q 0 || exit 1\n' "$have" >> "$D/head.sh"
+      shortcuts list 2>/dev/null | grep -q '^Show Mode Focus O' || printf '%s\n' sm_shortcuts_note >> "$D/head.sh"
+      mark showmode
+    fi
+    if sm_open "$have"; then changed; else HINT="it didn't start: open it from $(dirname "$have")"; failed; fi
+    return 0
+  fi
+
+  dmg=""
+  if [ -f "$SELF" ]; then
+    for f in "$(dirname "$SELF")"/showmode-*-macos-universal.dmg; do [ -f "$f" ] && dmg="$f"; done
+  fi
+  if [ -w "$SM_SYS" ]; then dest="$SM_SYS"; else dest="$HOME/Applications"; fi
+  if [ "$DRY" = 1 ]; then
+    if [ -n "$dmg" ]; then dry "install Show Mode from $dmg into $dest, then open it"
+    else dry "download the latest Show Mode from GitHub, install it into $dest, then open it"; fi
+    return 0
+  fi
+
+  t=$(mktemp -d -t mymac-showmode) || { failed; return 0; }
+  if [ -z "$dmg" ]; then
+    sm_download "$t"
+    case $? in
+      0) dmg="$t/showmode.dmg" ;;
+      2) HINT="the download didn't match GitHub's checksum, so it wasn't installed"; failed; rm -rf "$t"; return 0 ;;
+      *) HINT="GitHub couldn't be reached and there's no showmode-*-macos-universal.dmg beside mymac.sh"; failed; rm -rf "$t"; return 0 ;;
+    esac
+  fi
+  mkdir "$t/mnt"
+  if ! hdiutil attach -quiet -nobrowse -readonly -noautoopen -mountpoint "$t/mnt" "$dmg" >/dev/null 2>&1; then
+    HINT="couldn't open $dmg"; failed; rm -rf "$t"; return 0
+  fi
+  if ! sm_trusted "$t/mnt/Show Mode.app"; then
+    sm_unmount "$t"
+    HINT="the app in $(basename "$dmg") isn't Show Mode signed by Stoatworks, so it wasn't installed"; failed; return 0
+  fi
+
+  # Saved before the change: restore quits it, then removes only what wasn't here before.
+  {
+    printf 'showmode_back %q 1 || exit 1\n' "$dest/Show Mode.app"
+    for f in "$HOME/Library/Application Support/ShowMode" "$HOME/Library/Logs/ShowMode.log" \
+      "$HOME/Library/Caches/$SM_ID" "$HOME/Library/HTTPStorages/$SM_ID" \
+      "$HOME/Library/Saved Application State/$SM_ID.savedState"; do
+      [ -e "$f" ] || printf 'rm -rf %q\n' "$f"
+    done
+    defaults read "$SM_ID" >/dev/null 2>&1 || printf 'defaults delete %s 2>/dev/null\n' "$SM_ID"
+    [ -d "$dest" ] || printf 'rmdir %q 2>/dev/null\n' "$dest"
+    shortcuts list 2>/dev/null | grep -q '^Show Mode Focus O' || printf '%s\n' sm_shortcuts_note
+  } >> "$D/head.sh"
+  mark showmode
+
+  mkdir -p "$dest" 2>/dev/null
+  if ditto "$t/mnt/Show Mode.app" "$dest/Show Mode.app" 2>/dev/null; then
+    sm_unmount "$t"
+    # A disk image saved by a browser marks everything in it as downloaded. The copy has just
+    # passed the checks Gatekeeper would make (signature, Stoatworks' team, notarisation), and
+    # the mark would only make macOS ask again and run it from a random translocated path,
+    # where restore couldn't find it to quit it.
+    xattr -dr com.apple.quarantine "$dest/Show Mode.app" 2>/dev/null
+    S="Install and open Show Mode (in $dest)"
+    if sm_open "$dest/Show Mode.app"; then changed; else HINT="it didn't start: open it from $dest"; failed; fi
+  else
+    sm_unmount "$t"
+    rm -rf "$dest/Show Mode.app"
+    HINT="couldn't copy it into $dest"; failed
+  fi
+}
+
 # JXA through NSWorkspace: no Automation permission needed, unlike System Events.
 screens_get() {
   osascript -l JavaScript - <<'JS'
@@ -304,6 +451,38 @@ function run(argv) {
 JS
 }`;
 
+// Written into restore.sh: quitting Show Mode, which puts back what it changed.
+const SHOWMODE_BACK_FN = String.raw`
+showmode_back() { # showmode_back <app> <1 if mymac installed it>
+  local pid n=0
+  pid=$(pgrep -x ShowMode 2>/dev/null)
+  if [ -n "$pid" ]; then
+    echo "  Quitting Show Mode, which puts back what it changed..."
+    kill -TERM $pid 2>/dev/null
+    while [ "$n" -lt 60 ] && kill -0 $pid 2>/dev/null; do sleep 0.5; n=$((n + 1)); done
+    if kill -0 $pid 2>/dev/null; then
+      echo "mymac: Show Mode is still running. End the show from its menu and quit it, then run bash ~/.mymac/restore.sh again. Nothing has been put back yet." >&2
+      return 1
+    fi
+  fi
+  if [ -f "$HOME/Library/Application Support/ShowMode/journal.plist" ]; then
+    echo "mymac: Show Mode couldn't put everything back. Open it, choose Finish Restoring and quit it, then run bash ~/.mymac/restore.sh again. Nothing else has been put back yet." >&2
+    return 1
+  fi
+  if [ "$2" = 1 ]; then
+    rm -rf "$1" && echo "  ✓ Show Mode quit and removed"
+  elif [ -n "$pid" ]; then
+    echo "  ✓ Show Mode quit"
+  fi
+  return 0
+}
+
+sm_shortcuts_note() { # restore can't delete shortcuts, so it says so
+  shortcuts list 2>/dev/null | grep -q '^Show Mode Focus O' &&
+    echo "  · Show Mode's Do Not Disturb shortcuts are still in Shortcuts. Delete Show Mode Focus On and Show Mode Focus Off there."
+  return 0
+}`;
+
 // Builds restore.sh from the pieces apply has collected. Runs at the end of every apply, so a
 // second apply adds its new keys while keeping the values from before the first.
 const ASSEMBLE_FN = String.raw`
@@ -316,7 +495,8 @@ assemble() {
       'if [ "$(id -u)" = 0 ]; then echo "mymac: run restore as the logged-in user, not with sudo." >&2; exit 1; fi' \
       'D="$HOME/.mymac"' \
       'echo "mymac: putting this Mac back the way it was..."'
-    declare -f screen_set refresh
+    declare -f screen_set refresh showmode_back sm_shortcuts_note
+    cat "$D/head.sh" 2>/dev/null
     cat "$D/body.sh" 2>/dev/null
     cat "$D/tail.sh" 2>/dev/null
     printf '%s\n' \
@@ -325,7 +505,7 @@ assemble() {
       'logout_needed=$(sed "s/^, //" "$D/logout" 2>/dev/null)' \
       'rm -rf "$D"' \
       'echo "mymac: put back $n settings and removed ~/.mymac."' \
-      '[ -n "$logout_needed" ] && echo "Log out and back in to finish: $logout_needed"' \
+      'if [ -n "$logout_needed" ]; then echo "Log out and back in to finish: $logout_needed"; fi' \
       '}' \
       'main "$@"'
   } > "$D/restore.sh"
@@ -357,10 +537,12 @@ main() {
   DRY=0
   for a in "$@"; do case "$a" in -n|--dry-run) DRY=1 ;; esac; done
   D="$HOME/.mymac"
+  SELF=$BASH_SOURCE # this file, when it is run from one (a USB stick), for what sits beside it
   NSET=0; NSAME=0; NFAIL=0; DIRTY=""; LOGOUT=""; RELAUNCH=""
 ${APPLY_BODY}
 ${REFRESH_FN}
 ${SCREEN_SET_FN}
+${SHOWMODE_BACK_FN}
 ${ASSEMBLE_FN}
 
   if [ "$DRY" = 1 ]; then
@@ -368,7 +550,7 @@ ${ASSEMBLE_FN}
   else
     mkdir -p "$D" || { echo "mymac: cannot write $D" >&2; exit 1; }
     [ -f "$D/started" ] || date '+%Y-%m-%d %H:%M' > "$D/started"
-    touch "$D/seen" "$D/body.sh" "$D/tail.sh" "$D/kinds"
+    touch "$D/seen" "$D/head.sh" "$D/body.sh" "$D/tail.sh" "$D/kinds"
     if [ -s "$D/seen" ]; then
       say "mymac: keeping the snapshot from $(cat "$D/started"), so restore still goes back to before mymac."
     fi

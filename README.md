@@ -7,7 +7,8 @@
 > preference keys mymac can touch exactly, and the wallpaper store came back byte-for-byte. Not
 > confirmed yet: how trackpad changes feel live on real hardware (the VM has no trackpad), and how
 > Terminal.app's own permissions behave. Pointer size and the System Events settings may ask, or
-> be refused (see [Limits](#limits)).
+> be refused (see [Limits](#limits)). Installing Show Mode (`sh1`) was tried in the same VM from
+> GitHub and from a USB stick with no network, including a restore with a show running.
 
 Walk up to someone else's show Mac and it's set up wrong. The Dock is on the left and magnified,
 tap-to-click is off, scrolling runs backwards, Quick Note lives in the bottom-right hot corner,
@@ -24,6 +25,8 @@ bash ~/.mymac/restore.sh
 ```
 
 No install, no admin password, nothing stored anywhere. The profile lives entirely in the link.
+(If you want [Show Mode](https://github.com/stoatworks-labs/showmode) for the show, mymac can
+install that too, and restore takes it away again.)
 
 ![The mymac builder with a show profile filled in](docs/screenshots/mymac.png)
 
@@ -34,8 +37,8 @@ No install, no admin password, nothing stored anywhere. The profile lives entire
    then opens the builder with them filled in.
 2. **Tune it for the show.** Change anything, add the show-safety settings (or **Add show-safe
    pack**), and bookmark the page: the address bar always holds your profile.
-3. **On the show Mac,** paste the one-liner into Terminal. Before you leave, run
-   `bash ~/.mymac/restore.sh`.
+3. **On the show Mac,** paste the one-liner into Terminal, or run the script from a USB stick
+   (below). Before you leave, run `bash ~/.mymac/restore.sh`.
 
 To see what would change without changing anything:
 
@@ -43,9 +46,14 @@ To see what would change without changing anything:
 curl -fsSL https://mymac.stoatworks-labs.com/<code> | bash -s -- --dry-run
 ```
 
-No network on the show Mac? Use **Download mymac.sh** on the builder, take the file across, and
-run it with `bash mymac.sh`. Running it through `bash` means Gatekeeper's quarantine never comes
-into it.
+No network on the show Mac? **Download mymac.sh** on the builder and take it over on a USB stick.
+In Terminal, type `bash` and a space, drag `mymac.sh` onto the window, and press Return. Running it
+through `bash` means the browser's quarantine flag and the missing execute bit don't matter, and
+the script needs nothing from the network. Add `--dry-run` after the file name to look first.
+
+To install Show Mode on that Mac as well, put its disk image (`showmode-<version>-macos-universal.dmg`
+from [the latest release](https://github.com/stoatworks-labs/showmode/releases/latest)) on the stick
+beside `mymac.sh`. The script looks there before it tries GitHub.
 
 ## What it does to the Mac
 
@@ -61,11 +69,29 @@ type first and writes a line to `~/.mymac/restore.sh` that puts it back, then wr
   brings back dynamic and aerial wallpapers and every Space), and each screen's image path as a
   fallback.
 - "Keep awake" runs `caffeinate` in the background; restore stops it.
+- **Show Mode** (`sh1`) is installed only if it isn't there already, into `/Applications`, or
+  `~/Applications` where the user can't write to `/Applications`. The disk image comes from beside
+  the script (a USB stick) or else GitHub's latest release, whose published sha256 it must match.
+  Before anything is copied, the app has to pass `codesign --verify --deep --strict`, carry
+  Stoatworks' team ID (`3G7USP8N73`) and be accepted by Gatekeeper (`spctl`, which checks the
+  notarisation). Because of those checks, the installed copy loses the quarantine flag a browser
+  puts on a saved disk image; with it, macOS asks again and runs the app from a random
+  translocated path restore couldn't find. Then mymac opens it. Start the show from its menu.
+  Where Show Mode is already installed, mymac only opens it, and if it's already running, mymac
+  does nothing.
+- **Restore quits Show Mode first** (SIGTERM, which makes it put back what it changed), so its
+  changes come off before mymac's. Then it removes the app and only the files Show Mode made that
+  weren't there before (its log, journal folder, preferences, caches). A copy that was already
+  installed is quit but kept. If Show Mode won't quit, or can't finish putting things back (its
+  journal is still there), restore stops before changing anything and says so; run it again once
+  that's sorted. Restore can't delete Shortcuts, so if Show Mode's Do Not Disturb shortcuts were
+  added during the show, it says to delete them.
 - After applying, mymac restarts only what it has to: the Dock, Finder, WindowManager or Control
   Centre, plus `activateSettings -u` to push trackpad and keyboard changes to the driver. Don't
   run it in the middle of a show.
 - Restore puts everything back, restarts the same things, and deletes `~/.mymac`, so no trace
-  is left on the Mac.
+  is left on the Mac. `restore.sh` is rewritten after every setting, so a run that stops part way
+  (Ctrl-C, a lost connection) can still be put back.
 
 The script refuses to run under `sudo` (that would change root's settings, not the user's) and
 is wrapped in `main()`, so a download cut off half way runs nothing at all.
@@ -145,6 +171,7 @@ page to a browser. Add `.sh` to get the script whatever is asking.
 | `as` | Silence alert and interface sounds | 1 | no |
 | `ar` | AirPlay Receiver | 1 on, 0 off | no |
 | `cn` | Crash reports go to Notification Centre, not a window | 1 | no |
+| `sh` | Install (if needed) and open Show Mode; restore quits it and removes what mymac installed | 1 | no |
 
 The settings are data in [`public/lib/catalogue.js`](public/lib/catalogue.js): the keys, their
 types, the macOS default, how capture reads them back, and what has to restart. Several keys and
@@ -165,14 +192,18 @@ which proved them on macOS 26.4.1.
 - **Out of a script's reach:** Do Not Disturb, display arrangement and mirroring, and the sound
   output device. Each run ends with a reminder to check them. For show-long guards (the cursor
   fence, display lock, Do Not Disturb, muting other apps), use
-  [Show Mode](https://github.com/stoatworks-labs/showmode). That's an app you install, where mymac
-  is for a Mac that isn't yours.
+  [Show Mode](https://github.com/stoatworks-labs/showmode), which mymac can install for the show
+  (`sh1`) and remove again at restore.
 
 ## Privacy
 
 The site is a static page and a Cloudflare Worker that turns the code in the URL into a script.
 It keeps no database and no logs of its own, and has no accounts. Nothing on the show Mac is sent
 anywhere: capture prints a link on the Mac it runs on, and apply only writes local preferences.
+With Show Mode chosen and no disk image beside the script, apply asks GitHub's API for Show Mode's
+latest release and downloads it from GitHub. The page carries the usual Stoatworks support footer
+and About window; the footer's feedback form sends what you type to
+`intake.stoatworks-labs.com`, and only when you send it.
 
 ## Development
 
@@ -187,6 +218,14 @@ stand-ins for `defaults`, `osascript`, `killall`, `activateSettings` and `caffei
 (`test/shims/`). The stand-ins act on copies of the preference files, seeded by exporting this
 Mac's real domains, so the tests read your settings but never change them. They check that apply
 then restore gives back identical plists, and that capture reads back exactly what apply wrote.
+Show Mode is a stand-in app (a bash loop with a fake signature), "downloaded" by a `curl` stand-in
+from a fake release and "mounted" by an `hdiutil` stand-in; `open` and `pgrep` stand-ins start and
+see only that, so a real Show Mode on the Mac running the tests is never touched. The tests point
+the script's one system path (`SM_SYS=/Applications`) into the sandbox.
+
+`public/support-footer.js`, `public/about.js` and `public/about-data.js` are copies from
+stoatworks-backend (`scripts/sync-support-footer.sh` and `scripts/sync-about.py`). Don't edit them
+here; change the master there and re-sync.
 
 A push to `main` deploys the site through `.github/workflows/deploy.yml`. It runs the tests on a
 macOS runner (so the round trip runs for real), smoke-checks the page, deploys with wrangler, and

@@ -1,0 +1,19 @@
+#!/bin/bash
+# Test double for hdiutil: a "disk image" is a text file whose first line names the folder
+# that attach copies to the mount point. detach empties the mount point.
+echo "hdiutil $*" >> "$MYMAC_SB/log"
+verb=$1; shift
+mp="" img=""
+while [ $# -gt 0 ]; do
+  case "$1" in -mountpoint) mp=$2; shift ;; -*) ;; *) img=$1 ;; esac
+  shift
+done
+case "$verb" in
+  attach) [ -f "$MYMAC_SB/state/hdiutil-hang" ] && sleep 30   # a run that stops part way
+          src=$(head -n 1 "$img" 2>/dev/null)
+          [ -n "$mp" ] && [ -d "$src" ] || exit 1
+          mkdir -p "$mp" && cp -R "$src"/. "$mp"/ ;;
+  detach) [ -d "$img" ] || exit 1
+          find "$img" -mindepth 1 -delete ;;
+  *) exit 1 ;;
+esac

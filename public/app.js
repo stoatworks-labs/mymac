@@ -203,6 +203,7 @@ function render() {
     ].filter(Boolean).join(', ') + '. Each one is saved before it changes.';
   for (const id of ['cmd-apply', 'cmd-dry']) $(id).closest('.cmd').querySelector('.copy').disabled = !code;
   $('download').disabled = !code;
+  $('sm-usb').hidden = profile.sh !== '1';
   $('view').disabled = !code;
   if (served) history.replaceState(null, '', `/${code}`);
 }

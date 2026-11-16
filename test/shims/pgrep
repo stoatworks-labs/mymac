@@ -1,0 +1,16 @@
+#!/bin/bash
+# Test double for pgrep: sees only the processes the open double started, so a real Show Mode
+# running on the Mac under test is never found (or signalled).
+echo "pgrep $*" >> "$MYMAC_SB/log"
+mode=$1 pat=$2 rc=1
+[ -f "$MYMAC_SB/state/procs" ] || exit 1
+while IFS=$'\t' read -r pid exe; do
+  kill -0 "$pid" 2>/dev/null || continue
+  case "$mode" in
+    -x) [ "$(basename "$exe")" = "$pat" ] || continue ;;
+    -f) printf '%s\n' "$exe" | grep -qE -- "$pat" || continue ;;
+    *) exit 2 ;;
+  esac
+  echo "$pid"; rc=0
+done < "$MYMAC_SB/state/procs"
+exit $rc

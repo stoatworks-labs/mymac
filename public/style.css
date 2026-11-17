@@ -1,51 +1,22 @@
 :root {
-  --navy: #0e2942;
-  --accent: #235f92;
-  --accent-soft: #7fa8ce;
-  --paper: #fafaf8;
-  --card: #ffffff;
-  --ink: #16212c;
-  --muted: #5a6875;
-  --line: #dde3e9;
-  --chip: #eef3f8;
-  --ok: #2f6b4f;
-  --warn: #8a6a1f;
-  --code-bg: #0e2942;
-  --code-ink: #eaf2fa;
-  --radius: 10px;
-  --sw-support-accent: var(--accent);
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #0b1621;
-    --card: #12212f;
-    --ink: #e6edf3;
-    --muted: #9fb0bf;
-    --line: #233546;
-    --chip: #1a2e40;
-    --accent: #6c9fd0;
-    --code-bg: #060e16;
-    --ok: #6fb592;
-    --warn: #d1ad5a;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #0b1621;
-  --card: #12212f;
-  --ink: #e6edf3;
-  --muted: #9fb0bf;
-  --line: #233546;
-  --chip: #1a2e40;
-  --accent: #6c9fd0;
-  --code-bg: #060e16;
-  --ok: #6fb592;
-  --warn: #d1ad5a;
-  color-scheme: dark;
+  /* mymac's own names for the shared Stoatworks theme (stoatworks-theme.css, linked
+     first). The theme switches them for dark mode; mymac is where the look started. */
+  --navy: var(--sw-navy);
+  --accent: var(--sw-accent);
+  --accent-soft: var(--sw-accent-soft);
+  --paper: var(--sw-paper);
+  --card: var(--sw-card);
+  --ink: var(--sw-ink);
+  --muted: var(--sw-muted);
+  --line: var(--sw-line);
+  --chip: var(--sw-tint);
+  --ok: var(--sw-ok);
+  --warn: var(--sw-warn);
+  --code-bg: var(--sw-code-bg);
+  --code-ink: var(--sw-code-ink);
+  --radius: var(--sw-radius);
+  --font: var(--sw-font);
+  --mono: var(--sw-mono);
 }
 
 * { box-sizing: border-box; }
